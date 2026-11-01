@@ -92,3 +92,7 @@ affilié à aucune d'elles.
 pip install pytest-homeassistant-custom-component
 pytest
 ```
+
+## Licence
+
+MIT — voir [LICENSE](LICENSE).
