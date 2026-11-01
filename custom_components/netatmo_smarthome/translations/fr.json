@@ -1,0 +1,67 @@
+{
+  "application_credentials": {
+    "description": "Créez une application Netatmo sur {dev_portal} et réglez son URI de redirection sur {redirect_url}. Saisissez ensuite son client ID et son client secret ici."
+  },
+  "config": {
+    "step": {
+      "pick_implementation": {
+        "title": "Choisissez l'application Netatmo"
+      },
+      "reauth_confirm": {
+        "title": "Reconnexion à Netatmo",
+        "description": "Netatmo a refusé la connexion actuelle. Reconnectez-vous pour retrouver vos appareils."
+      }
+    },
+    "abort": {
+      "already_configured": "Netatmo Smart Home est déjà configuré.",
+      "missing_credentials": "Ajoutez d'abord les identifiants de votre application Netatmo (Paramètres → Appareils et services → ⋮ → Identifiants d'application).",
+      "missing_configuration": "Ajoutez d'abord les identifiants de votre application Netatmo.",
+      "authorize_url_timeout": "Délai dépassé en préparant la page de connexion Netatmo.",
+      "no_url_available": "Aucune URL Home Assistant disponible pour la redirection de connexion.",
+      "oauth_error": "Netatmo a renvoyé des données de connexion invalides.",
+      "oauth_failed": "Netatmo n'a pas renvoyé de jeton.",
+      "oauth_timeout": "Délai dépassé en récupérant le jeton Netatmo.",
+      "oauth_unauthorized": "Netatmo a refusé la connexion.",
+      "user_rejected_authorize": "La connexion Netatmo a été annulée.",
+      "reauth_successful": "Reconnexion à Netatmo réussie."
+    },
+    "create_entry": {
+      "default": "Connecté à Netatmo."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options Netatmo Smart Home",
+        "data": {
+          "scan_interval": "Intervalle de mise à jour"
+        },
+        "data_description": {
+          "scan_interval": "Secondes entre deux mises à jour. Netatmo autorise environ 500 requêtes par heure : gardez 60 s ou plus."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "health": {
+        "name": "Qualité de l'air",
+        "state": {
+          "healthy": "Sain",
+          "fine": "Correct",
+          "fair": "Moyen",
+          "poor": "Mauvais",
+          "unhealthy": "Malsain"
+        }
+      },
+      "co_level": {
+        "name": "Niveau de monoxyde de carbone",
+        "state": {
+          "ok": "OK",
+          "pre_alarm": "Pré-alarme",
+          "alarm": "Alarme"
+        }
+      }
+    }
+  }
+}

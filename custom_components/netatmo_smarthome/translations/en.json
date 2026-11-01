@@ -1,0 +1,67 @@
+{
+  "application_credentials": {
+    "description": "Create a Netatmo app on {dev_portal} and set its redirect URI to {redirect_url}. Then enter its client ID and client secret here."
+  },
+  "config": {
+    "step": {
+      "pick_implementation": {
+        "title": "Pick the Netatmo app"
+      },
+      "reauth_confirm": {
+        "title": "Log in to Netatmo again",
+        "description": "Netatmo refused the current login. Log in again to restore your devices."
+      }
+    },
+    "abort": {
+      "already_configured": "Netatmo Smart Home is already configured.",
+      "missing_credentials": "Add your Netatmo app credentials first (Settings → Devices & services → ⋮ → Application credentials).",
+      "missing_configuration": "Add your Netatmo app credentials first.",
+      "authorize_url_timeout": "Timed out while preparing the Netatmo login page.",
+      "no_url_available": "No Home Assistant URL is available for the login redirect.",
+      "oauth_error": "Netatmo returned invalid login data.",
+      "oauth_failed": "Netatmo did not return a token.",
+      "oauth_timeout": "Timed out while getting the Netatmo token.",
+      "oauth_unauthorized": "Netatmo refused the login.",
+      "user_rejected_authorize": "The Netatmo login was cancelled.",
+      "reauth_successful": "Logged in to Netatmo again."
+    },
+    "create_entry": {
+      "default": "Connected to Netatmo."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Netatmo Smart Home options",
+        "data": {
+          "scan_interval": "Update interval"
+        },
+        "data_description": {
+          "scan_interval": "Seconds between two updates. Netatmo allows about 500 requests per hour: keep 60 s or more."
+        }
+      }
+    }
+  },
+  "entity": {
+    "sensor": {
+      "health": {
+        "name": "Air quality",
+        "state": {
+          "healthy": "Healthy",
+          "fine": "Fine",
+          "fair": "Fair",
+          "poor": "Poor",
+          "unhealthy": "Unhealthy"
+        }
+      },
+      "co_level": {
+        "name": "Carbon monoxide level",
+        "state": {
+          "ok": "OK",
+          "pre_alarm": "Pre-alarm",
+          "alarm": "Alarm"
+        }
+      }
+    }
+  }
+}
