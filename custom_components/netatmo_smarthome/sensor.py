@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from homeassistant.components.sensor import (
@@ -15,6 +16,7 @@ from homeassistant.components.sensor import (
 from homeassistant.const import (
     CONCENTRATION_PARTS_PER_MILLION,
     PERCENTAGE,
+    SIGNAL_STRENGTH_DECIBELS_MILLIWATT,
     EntityCategory,
     UnitOfPower,
     UnitOfPressure,
@@ -25,6 +27,7 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from . import NetatmoConfigEntry
 from .const import ATTRIBUTION, CO_LEVELS, CO_TYPES, DOMAIN, HEALTH_LEVELS, SMOKE_TYPES
@@ -111,12 +114,25 @@ async def async_setup_entry(
         coordinator,
         entry.async_on_unload,
         lambda module: (
-            module.type in SMOKE_TYPES | CO_TYPES
-            and ("battery_percent" in module.status or "battery_state" in module.status)
+            "battery_percent" in module.status or "battery_state" in module.status
         ),
         lambda ids: async_add_entities(
             NetatmoBatterySensor(coordinator, i) for i in ids
         ),
+    )
+    async_add_new_modules(
+        coordinator,
+        entry.async_on_unload,
+        lambda module: module.type in SMOKE_TYPES | CO_TYPES,
+        lambda ids: async_add_entities(
+            NetatmoLastSeenSensor(coordinator, i) for i in ids
+        ),
+    )
+    async_add_new_modules(
+        coordinator,
+        entry.async_on_unload,
+        lambda module: "wifi_strength" in module.status,
+        lambda ids: async_add_entities(NetatmoWifiSensor(coordinator, i) for i in ids),
     )
     async_add_new_modules(
         coordinator,
@@ -163,13 +179,70 @@ class NetatmoPowerSensor(NetatmoModuleEntity, SensorEntity):
         return power if isinstance(power, int | float) and power >= 0 else None
 
 
-class NetatmoBatterySensor(NetatmoModuleEntity, SensorEntity):
-    """Battery level of a smoke or CO alarm."""
+class NetatmoDiagnosticSensor(NetatmoModuleEntity, SensorEntity):
+    """Diagnostic value that stays readable for sleeping battery modules."""
+
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    @property
+    def available(self) -> bool:
+        """Remotes and alarms sleep and report reachable: false; keep them."""
+        return (
+            self.coordinator.last_update_success
+            and self._module_id in self.coordinator.data.modules
+        )
+
+
+class NetatmoLastSeenSensor(NetatmoDiagnosticSensor):
+    """Last time a smoke or CO alarm contacted Netatmo (about once a month)."""
+
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_translation_key = "last_seen"
+
+    def __init__(self, coordinator: NetatmoCoordinator, module_id: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, module_id)
+        self._attr_unique_id = f"{module_id}_last_seen"
+
+    @property
+    def native_value(self) -> datetime | None:
+        """Return the last contact time."""
+        seen = self.module.status.get("last_seen")
+        if isinstance(seen, int | float) and seen > 0:
+            return dt_util.utc_from_timestamp(seen)
+        return None
+
+
+class NetatmoWifiSensor(NetatmoDiagnosticSensor):
+    """Wi-Fi signal of a gateway or an alarm.
+
+    Netatmo reports the signal as a positive number where lower is better (it
+    is the RSSI without its sign), so it is shown in dBm as a negative value.
+    """
+
+    _attr_device_class = SensorDeviceClass.SIGNAL_STRENGTH
+    _attr_native_unit_of_measurement = SIGNAL_STRENGTH_DECIBELS_MILLIWATT
+    _attr_state_class = SensorStateClass.MEASUREMENT
+    _attr_entity_registry_enabled_default = False
+
+    def __init__(self, coordinator: NetatmoCoordinator, module_id: str) -> None:
+        """Initialize the sensor."""
+        super().__init__(coordinator, module_id)
+        self._attr_unique_id = f"{module_id}_wifi"
+
+    @property
+    def native_value(self) -> int | None:
+        """Return the Wi-Fi signal in dBm."""
+        strength = self.module.status.get("wifi_strength")
+        return -int(strength) if isinstance(strength, int | float) else None
+
+
+class NetatmoBatterySensor(NetatmoDiagnosticSensor):
+    """Battery level of a module that reports one (remotes, switches)."""
 
     _attr_device_class = SensorDeviceClass.BATTERY
     _attr_native_unit_of_measurement = PERCENTAGE
     _attr_state_class = SensorStateClass.MEASUREMENT
-    _attr_entity_category = EntityCategory.DIAGNOSTIC
 
     def __init__(self, coordinator: NetatmoCoordinator, module_id: str) -> None:
         """Initialize the sensor."""

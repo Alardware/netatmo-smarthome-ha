@@ -61,6 +61,9 @@
           "pre_alarm": "Pré-alarme",
           "alarm": "Alarme"
         }
+      },
+      "last_seen": {
+        "name": "Dernier contact"
       }
     }
   }

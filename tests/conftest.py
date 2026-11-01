@@ -21,6 +21,7 @@ HOME = "home-1"
 NLG, PLUG, GANG1 = "70:ee:50:00:00:01", "00:04:74:00:00:02", "00:04:74:00:00:03#1"
 NBG, SHUTTER = "70:ee:50:00:00:04", "0009999992"
 NSD, NCO, COACH = "70:ee:50:00:00:05", "70:ee:50:00:00:06", "70:ee:50:00:00:07"
+REMOTE = "00:04:74:00:00:08"
 
 HOMESDATA = {
     "status": "ok",
@@ -49,6 +50,12 @@ HOMESDATA = {
                     },
                     {"id": NSD, "type": "NSD", "name": "Détecteur fumée"},
                     {"id": NCO, "type": "NCO", "name": "Détecteur CO"},
+                    {
+                        "id": REMOTE,
+                        "type": "NLT",
+                        "name": "Commande sans fil",
+                        "bridge": NLG,
+                    },
                 ],
             }
         ]
@@ -56,8 +63,10 @@ HOMESDATA = {
 }
 
 
-def homestatus(shutter_position: int = 0, plug_on: bool = True) -> dict[str, Any]:
-    """Return a homestatus answer."""
+def homestatus(
+    shutter_position: int = 0, plug_on: bool = True, step: int = 1
+) -> dict[str, Any]:
+    """Return a homestatus answer (shapes recorded from a real installation)."""
     return {
         "status": "ok",
         "body": {
@@ -85,12 +94,32 @@ def homestatus(shutter_position: int = 0, plug_on: bool = True) -> dict[str, Any
                         "type": "NBR",
                         "current_position": shutter_position,
                         "target_position": shutter_position,
-                        "target_position_step": 100,
+                        "target_position:step": step,
+                        "battery_level": 3,
                         "reachable": True,
                         "bridge": NBG,
                     },
-                    {"id": NSD, "type": "NSD", "battery_percent": 88},
-                    {"id": NCO, "type": "NCO"},
+                    {
+                        "id": NSD,
+                        "type": "NSD",
+                        "last_seen": 1790000000,
+                        "wifi_strength": 58,
+                    },
+                    {
+                        "id": NCO,
+                        "type": "NCO",
+                        "last_seen": 1790000000,
+                        "wifi_strength": 50,
+                    },
+                    {
+                        "id": REMOTE,
+                        "type": "NLT",
+                        "battery_state": "medium",
+                        "battery_level": 2400,
+                        "last_seen": 0,
+                        "reachable": False,
+                        "bridge": NLG,
+                    },
                 ],
             }
         },

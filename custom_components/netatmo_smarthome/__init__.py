@@ -7,10 +7,17 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
-from homeassistant.helpers import config_entry_oauth2_flow
+from homeassistant.helpers import config_entry_oauth2_flow, device_registry as dr
 
 from .api import NetatmoClient
-from .const import LOGGER, MAX_TOKEN_FAILURES, SCOPES
+from .const import (
+    DOMAIN,
+    GATEWAY_TYPES,
+    LOGGER,
+    MAX_TOKEN_FAILURES,
+    MODEL_NAMES,
+    SCOPES,
+)
 from .coordinator import NetatmoCoordinator
 
 try:
@@ -81,6 +88,19 @@ async def async_setup_entry(hass: HomeAssistant, entry: NetatmoConfigEntry) -> b
     coordinator = NetatmoCoordinator(hass, entry, NetatmoClient(session))
     await coordinator.async_config_entry_first_refresh()
     entry.runtime_data = coordinator
+
+    # Gateways have no entity of their own but are the parent of their modules.
+    registry = dr.async_get(hass)
+    for module in coordinator.data.modules.values():
+        if module.type in GATEWAY_TYPES:
+            registry.async_get_or_create(
+                config_entry_id=entry.entry_id,
+                identifiers={(DOMAIN, module.id)},
+                manufacturer="Bubendorff" if module.type == "NBG" else "Legrand",
+                model=MODEL_NAMES.get(module.type, module.type),
+                name=module.name,
+                sw_version=str(module.status.get("firmware_revision") or "") or None,
+            )
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))

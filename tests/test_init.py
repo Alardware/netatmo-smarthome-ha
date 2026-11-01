@@ -8,6 +8,7 @@ import time
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.helpers import device_registry as dr
 from homeassistant.util import dt as dt_util
 import pytest
 from pytest_homeassistant_custom_component.common import (
@@ -19,7 +20,7 @@ from pytest_homeassistant_custom_component.components.diagnostics import (
 )
 from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
 
-from custom_components.netatmo_smarthome.const import API_URL, OAUTH2_TOKEN
+from custom_components.netatmo_smarthome.const import API_URL, DOMAIN, OAUTH2_TOKEN
 
 from .conftest import NBG, NCO, NSD, SHUTTER, events, homestatus, mock_api
 
@@ -47,8 +48,7 @@ async def test_entities(
 
     cover = hass.states.get("cover.volet_salon")
     assert cover.state == "closed"
-    # Step 100: open/close/stop only, no position.
-    assert "current_position" not in cover.attributes
+    assert cover.attributes["current_position"] == 0
 
     assert hass.states.get("sensor.capteur_chambre_temperature").state == "20.3"
     assert hass.states.get("sensor.capteur_chambre_carbon_dioxide").state == "494"
@@ -56,10 +56,21 @@ async def test_entities(
 
     assert hass.states.get("binary_sensor.detecteur_fumee").state == "off"
     assert hass.states.get("binary_sensor.detecteur_co").state == "off"
-    assert hass.states.get("sensor.detecteur_fumee_battery").state == "88"
+    # Alarms report no battery, only their last monthly contact.
+    assert hass.states.get("sensor.detecteur_fumee_battery") is None
+    assert (
+        hass.states.get("sensor.detecteur_fumee_last_contact").state
+        == "2026-09-21T14:13:20+00:00"
+    )
+    # A sleeping remote (reachable: false) still shows its battery.
+    assert hass.states.get("sensor.commande_sans_fil_battery").state == "50"
     assert hass.states.get("sensor.detecteur_co_carbon_monoxide_level").state == "ok"
-    # Gateways are devices, not entities.
+    # Gateways are devices (parents of their modules), not entities.
     assert hass.states.get("switch.legrand_gateway") is None
+    registry = dr.async_get(hass)
+    gateway = registry.async_get_device(identifiers={(DOMAIN, NBG)})
+    shutter = registry.async_get_device(identifiers={(DOMAIN, SHUTTER)})
+    assert gateway is not None and shutter.via_device_id == gateway.id
 
 
 async def test_shutter_command(
@@ -253,3 +264,38 @@ async def test_shutter_followed_until_it_stops(
     async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=40))
     await hass.async_block_till_done()
     assert len(aioclient_mock.mock_calls) == reads
+
+
+async def test_shutter_position_and_fixed_steps(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    credentials,
+    config_entry: MockConfigEntry,
+) -> None:
+    """A positionable shutter takes a position; a step-100 one shows none."""
+    mock_api(aioclient_mock)
+    await _setup(hass, config_entry)
+    await hass.services.async_call(
+        "cover",
+        "set_cover_position",
+        {"entity_id": "cover.volet_salon", "position": 42},
+        blocking=True,
+    )
+    body = [c for c in aioclient_mock.mock_calls if str(c[1]).endswith("setstate")][-1][
+        2
+    ]
+    assert body["home"]["modules"][0]["target_position"] == 42
+
+
+async def test_shutter_without_positioning(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    credentials,
+    config_entry: MockConfigEntry,
+) -> None:
+    """Shutters with a step of 100 only open, close and stop."""
+    mock_api(aioclient_mock, status=homestatus(step=100))
+    await _setup(hass, config_entry)
+    cover = hass.states.get("cover.volet_salon")
+    assert cover.state == "closed"
+    assert "current_position" not in cover.attributes

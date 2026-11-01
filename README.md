@@ -6,7 +6,7 @@ Une seule intégration pour les appareils des trois applications Netatmo :
 | --- | --- | --- |
 | **Home + Control** | Volets Bubendorff (passerelle iDiamant), prises, interrupteurs, micromodules et variateurs Legrand Céliane / dooxie « with Netatmo », volets Legrand | `cover`, `switch`, `light`, puissance en W |
 | **Home Coach** | Healthy Home Coach (Smart Indoor Air Quality Monitor) | température, humidité, CO2, bruit, pression, qualité de l'air |
-| **Home Security** | Détecteur de fumée, détecteur de monoxyde de carbone | alarme fumée / CO, niveau de CO, batterie |
+| **Home Security** | Détecteur de fumée, détecteur de monoxyde de carbone | alarme fumée / CO, niveau de CO, dernier contact, signal Wi-Fi |
 
 Pourquoi pas l'intégration officielle ?
 
@@ -54,6 +54,8 @@ dans la même limite de requêtes Netatmo et feraient doublon.
 ## Détecteurs de fumée et de CO : à savoir
 
 - L'alarme s'affiche au plus tard un cycle de mise à jour après l'événement (60 s par défaut).
+- Netatmo ne fournit **pas le niveau de batterie** des détecteurs. Le capteur « Dernier contact »
+  montre leur dernier échange avec Netatmo (environ une fois par mois, lors du test automatique).
 - Elle s'éteint avec l'événement « fin d'alarme » de Netatmo, ou d'elle-même 30 minutes après une
   détection jamais suivie de cet événement.
 - Après un redémarrage, une alarme des 30 dernières minutes est retrouvée dans l'historique.
