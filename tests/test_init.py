@@ -2,13 +2,18 @@
 
 from __future__ import annotations
 
+from datetime import timedelta
 import time
 
 from homeassistant.config_entries import ConfigEntryState
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import HomeAssistantError
+from homeassistant.util import dt as dt_util
 import pytest
-from pytest_homeassistant_custom_component.common import MockConfigEntry
+from pytest_homeassistant_custom_component.common import (
+    MockConfigEntry,
+    async_fire_time_changed,
+)
 from pytest_homeassistant_custom_component.components.diagnostics import (
     get_diagnostics_for_config_entry,
 )
@@ -214,3 +219,37 @@ async def test_diagnostics_redact_tokens(
     assert diag["entry"]["data"]["token"] == "**REDACTED**"
     assert "client-secret" not in str(diag)
     assert diag["raw"]["homesdata"][0]["name"] == "Maison"
+
+
+async def test_shutter_followed_until_it_stops(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    credentials,
+    config_entry: MockConfigEntry,
+) -> None:
+    """After a command, the state is read again until the shutter reports it."""
+    mock_api(aioclient_mock)
+    await _setup(hass, config_entry)
+
+    await hass.services.async_call(
+        "cover", "open_cover", {"entity_id": "cover.volet_salon"}, blocking=True
+    )
+    assert hass.states.get("cover.volet_salon").state == "opening"
+
+    # 5 s later Netatmo still reports the old position: keep "opening".
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=6))
+    await hass.async_block_till_done()
+    assert hass.states.get("cover.volet_salon").state == "opening"
+
+    # The shutter reaches the top: the next follow-up read shows it open.
+    aioclient_mock.clear_requests()
+    mock_api(aioclient_mock, status=homestatus(shutter_position=100))
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=17))
+    await hass.async_block_till_done()
+    assert hass.states.get("cover.volet_salon").state == "open"
+    reads = len(aioclient_mock.mock_calls)
+
+    # No more follow-up reads once the shutter has stopped.
+    async_fire_time_changed(hass, dt_util.utcnow() + timedelta(seconds=40))
+    await hass.async_block_till_done()
+    assert len(aioclient_mock.mock_calls) == reads

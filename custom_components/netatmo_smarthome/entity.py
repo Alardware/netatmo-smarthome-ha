@@ -12,7 +12,14 @@ from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .api import NetatmoCommandError, NetatmoError
-from .const import ATTRIBUTION, DOMAIN, MODEL_NAMES, REFRESH_AFTER_COMMAND
+from .const import (
+    ATTRIBUTION,
+    DOMAIN,
+    FOLLOW_UP_INTERVAL,
+    FOLLOW_UP_MAX,
+    MODEL_NAMES,
+    REFRESH_AFTER_COMMAND,
+)
 from .coordinator import NetatmoCoordinator, NetatmoModule
 
 
@@ -56,6 +63,22 @@ class NetatmoModuleEntity(CoordinatorEntity[NetatmoCoordinator]):
             and modules[self._module_id].reachable
         )
 
+    _cancel_follow_up: Callable[[], None] | None = None
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Stop pending state reads."""
+        if self._cancel_follow_up:
+            self._cancel_follow_up()
+        await super().async_will_remove_from_hass()
+
+    def _still_moving(self) -> bool:
+        """Return True while the last command is still being carried out."""
+        return False
+
+    @callback
+    def _follow_up_given_up(self) -> None:
+        """Called when the module never reported the commanded state."""
+
     async def async_send(self, **values: Any) -> None:
         """Send a command to the module, then read the state back."""
         module = self.module
@@ -73,11 +96,32 @@ class NetatmoModuleEntity(CoordinatorEntity[NetatmoCoordinator]):
             raise HomeAssistantError(f"{module.name}: {err}") from err
         module.status.update(values)
         self.async_write_ha_state()
+        self._schedule_follow_up()
+
+    def _schedule_follow_up(self) -> None:
+        """Read the state back soon, then again while the module moves."""
+        if self._cancel_follow_up:
+            self._cancel_follow_up()
+        attempts = 0
 
         async def _refresh(_now: Any) -> None:
-            await self.coordinator.async_request_refresh()
+            nonlocal attempts
+            self._cancel_follow_up = None
+            # A direct refresh, so the state is read before deciding to go on.
+            await self.coordinator.async_refresh()
+            attempts += 1
+            if not self._still_moving():
+                return
+            if attempts < FOLLOW_UP_MAX:
+                self._cancel_follow_up = async_call_later(
+                    self.hass, FOLLOW_UP_INTERVAL, _refresh
+                )
+            else:
+                self._follow_up_given_up()
 
-        async_call_later(self.hass, REFRESH_AFTER_COMMAND, _refresh)
+        self._cancel_follow_up = async_call_later(
+            self.hass, REFRESH_AFTER_COMMAND, _refresh
+        )
 
 
 def async_add_new_modules(

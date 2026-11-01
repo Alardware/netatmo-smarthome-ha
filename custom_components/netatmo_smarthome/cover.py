@@ -10,7 +10,7 @@ from homeassistant.components.cover import (
     CoverEntity,
     CoverEntityFeature,
 )
-from homeassistant.core import HomeAssistant
+from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from . import NetatmoConfigEntry
@@ -63,6 +63,9 @@ class NetatmoCover(NetatmoModuleEntity, CoverEntity):
         """Initialize the cover."""
         super().__init__(coordinator, module_id)
         self._attr_unique_id = module_id
+        # Position commanded from Home Assistant and not reached yet: Netatmo
+        # often reports the old position until the shutter stops.
+        self._commanded: int | None = None
         self._attr_device_class = (
             CoverDeviceClass.GARAGE
             if self.module.type in GARAGE_TYPES
@@ -108,41 +111,61 @@ class NetatmoCover(NetatmoModuleEntity, CoverEntity):
         return None if current is None else current == CLOSED
 
     @property
+    def _target(self) -> int | None:
+        if self._commanded is not None:
+            return self._commanded
+        target = _int(self.module.status.get("target_position"))
+        return target if target is not None and 0 <= target <= 100 else None
+
+    @property
     def is_opening(self) -> bool:
         """Return True while the shutter moves up."""
-        target, current = _int(self.module.status.get("target_position")), self._current
-        return (
-            target is not None
-            and current is not None
-            and 0 <= target <= 100
-            and target > current
-        )
+        target, current = self._target, self._current
+        return target is not None and current is not None and target > current
 
     @property
     def is_closing(self) -> bool:
         """Return True while the shutter moves down."""
-        target, current = _int(self.module.status.get("target_position")), self._current
-        return (
-            target is not None
-            and current is not None
-            and 0 <= target <= 100
-            and target < current
-        )
+        target, current = self._target, self._current
+        return target is not None and current is not None and target < current
+
+    def _still_moving(self) -> bool:
+        return self._commanded is not None
+
+    @callback
+    def _follow_up_given_up(self) -> None:
+        self._commanded = None
+        self.async_write_ha_state()
+
+    @callback
+    def _handle_coordinator_update(self) -> None:
+        """Forget the commanded position once the shutter reports it."""
+        if self._commanded is not None and self._current == self._commanded:
+            self._commanded = None
+        super()._handle_coordinator_update()
+
+    async def _move(self, target: int) -> None:
+        self._commanded = target if 0 <= target <= 100 else None
+        try:
+            await self.async_send(target_position=target)
+        except Exception:
+            self._commanded = None
+            raise
 
     async def async_open_cover(self, **kwargs: Any) -> None:
         """Open the shutter."""
-        await self.async_send(target_position=OPEN)
+        await self._move(OPEN)
 
     async def async_close_cover(self, **kwargs: Any) -> None:
         """Close the shutter."""
-        await self.async_send(target_position=CLOSED)
+        await self._move(CLOSED)
 
     async def async_stop_cover(self, **kwargs: Any) -> None:
         """Stop the shutter."""
-        await self.async_send(target_position=STOP)
+        await self._move(STOP)
 
     async def async_set_cover_position(self, **kwargs: Any) -> None:
         """Move to a position, rounded to the shutter's step."""
         step = max(self._step, 1)
         position = min(100, max(0, round(kwargs[ATTR_POSITION] / step) * step))
-        await self.async_send(target_position=position)
+        await self._move(position)

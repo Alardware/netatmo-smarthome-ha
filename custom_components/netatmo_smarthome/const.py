@@ -33,8 +33,11 @@ MAX_SCAN_INTERVAL = 600
 HOMECOACH_EVERY = 5
 TOPOLOGY_INTERVAL = timedelta(hours=6)
 THROTTLE_DELAY = 15 * 60
-# Seconds before reading the state back after a command.
+# Seconds before reading the state back after a command, then while a shutter
+# is still moving: every FOLLOW_UP_INTERVAL seconds, at most FOLLOW_UP_MAX times.
 REFRESH_AFTER_COMMAND = 5
+FOLLOW_UP_INTERVAL = 10
+FOLLOW_UP_MAX = 8
 # Consecutive token refresh rejections before asking the user to log in again
 # (Netatmo sometimes answers 400 during outages).
 MAX_TOKEN_FAILURES = 3
