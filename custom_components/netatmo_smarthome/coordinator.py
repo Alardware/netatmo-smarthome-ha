@@ -28,6 +28,7 @@ from .const import (
     LOGGER,
     MAX_TOKEN_FAILURES,
     SMOKE_TYPES,
+    STALE_TOLERANCE,
     THROTTLE_DELAY,
     TOPOLOGY_INTERVAL,
 )
@@ -150,7 +151,10 @@ class NetatmoCoordinator(DataUpdateCoordinator[NetatmoData]):
         self._cycle = 0
         self._seen_events: set[str] = set()
         self._token_failures = 0
+        self._failures = 0
         self._homecoach_allowed = True
+        # Options the entry was loaded with: a new token must not reload it.
+        self.loaded_options = dict(entry.options)
         self.raw: dict[str, Any] = {}
 
     async def _async_update_data(self) -> NetatmoData:
@@ -169,12 +173,25 @@ class NetatmoCoordinator(DataUpdateCoordinator[NetatmoData]):
             self._token_failures += 1
             if self._token_failures >= MAX_TOKEN_FAILURES:
                 raise ConfigEntryAuthFailed(str(err)) from err
-            raise UpdateFailed(f"Netatmo refused the token, retrying: {err}") from err
+            return self._keep_last_values(err)
         except NetatmoError as err:
-            raise UpdateFailed(f"Error communicating with Netatmo: {err}") from err
+            return self._keep_last_values(err)
         self._token_failures = 0
+        self._failures = 0
         self._cycle += 1
         return data
+
+    def _keep_last_values(self, err: NetatmoError) -> NetatmoData:
+        """Keep the last values through a few failed updates in a row."""
+        self._failures += 1
+        if self.data is not None and self._failures < STALE_TOLERANCE:
+            LOGGER.debug(
+                "Netatmo update failed (%s in a row), keeping the last values: %s",
+                self._failures,
+                err,
+            )
+            return self.data
+        raise UpdateFailed(f"Error communicating with Netatmo: {err}") from err
 
     async def _fetch(self, previous: NetatmoData) -> NetatmoData:
         now = dt_util.utcnow()

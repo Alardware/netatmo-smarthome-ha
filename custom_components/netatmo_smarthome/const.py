@@ -41,6 +41,9 @@ FOLLOW_UP_MAX = 8
 # Consecutive token refresh rejections before asking the user to log in again
 # (Netatmo sometimes answers 400 during outages).
 MAX_TOKEN_FAILURES = 3
+# Consecutive failed updates during which the last values stay shown, so a
+# single slow or failed Netatmo answer does not make every entity unavailable.
+STALE_TOLERANCE = 3
 
 # How long a smoke or CO detection stays on without a "cleared" event.
 ALARM_TIMEOUT = timedelta(minutes=30)

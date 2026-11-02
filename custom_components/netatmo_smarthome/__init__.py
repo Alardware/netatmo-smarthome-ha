@@ -115,5 +115,6 @@ async def async_unload_entry(hass: HomeAssistant, entry: NetatmoConfigEntry) -> 
 async def _async_update_listener(
     hass: HomeAssistant, entry: NetatmoConfigEntry
 ) -> None:
-    """Reload the entry when options change."""
-    await hass.config_entries.async_reload(entry.entry_id)
+    """Reload when the options change, not when a refreshed token is saved."""
+    if dict(entry.options) != entry.runtime_data.loaded_options:
+        await hass.config_entries.async_reload(entry.entry_id)

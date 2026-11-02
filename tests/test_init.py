@@ -299,3 +299,58 @@ async def test_shutter_without_positioning(
     cover = hass.states.get("cover.volet_salon")
     assert cover.state == "closed"
     assert "current_position" not in cover.attributes
+
+
+async def test_saved_token_does_not_reload(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    credentials,
+    config_entry: MockConfigEntry,
+) -> None:
+    """Saving a refreshed token (every 3 hours) must not reload the entry."""
+    mock_api(aioclient_mock)
+    await _setup(hass, config_entry)
+    homesdata_calls = sum(
+        str(c[1]).endswith("homesdata") for c in aioclient_mock.mock_calls
+    )
+
+    token = {
+        **config_entry.data["token"],
+        "access_token": "new",
+        "refresh_token": "new",
+    }
+    hass.config_entries.async_update_entry(
+        config_entry, data={**config_entry.data, "token": token}
+    )
+    await hass.async_block_till_done()
+
+    assert config_entry.state is ConfigEntryState.LOADED
+    assert (
+        sum(str(c[1]).endswith("homesdata") for c in aioclient_mock.mock_calls)
+        == homesdata_calls
+    )
+    assert hass.states.get("cover.volet_salon").state == "closed"
+
+
+async def test_transient_failures_keep_last_values(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    credentials,
+    config_entry: MockConfigEntry,
+) -> None:
+    """Two failed updates keep the last values; the third one gives up."""
+    mock_api(aioclient_mock)
+    await _setup(hass, config_entry)
+    coordinator = config_entry.runtime_data
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{API_URL}/homestatus", status=500, text="error")
+    for _ in range(2):
+        await coordinator.async_refresh()
+        await hass.async_block_till_done()
+        assert hass.states.get("cover.volet_salon").state == "closed"
+        assert hass.states.get("sensor.capteur_chambre_temperature").state == "20.3"
+
+    await coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get("cover.volet_salon").state == "unavailable"
