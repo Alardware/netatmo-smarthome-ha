@@ -31,6 +31,8 @@ DEFAULT_SCAN_INTERVAL = 60
 MIN_SCAN_INTERVAL = 30
 MAX_SCAN_INTERVAL = 600
 HOMECOACH_EVERY = 5
+# Smoke/CO events are read every EVENTS_EVERY cycles (every 2 minutes).
+EVENTS_EVERY = 2
 TOPOLOGY_INTERVAL = timedelta(hours=6)
 THROTTLE_DELAY = 15 * 60
 # Seconds before reading the state back after a command, then while a shutter
@@ -44,6 +46,8 @@ MAX_TOKEN_FAILURES = 3
 # Consecutive failed updates during which the last values stay shown, so a
 # single slow or failed Netatmo answer does not make every entity unavailable.
 STALE_TOLERANCE = 3
+# After a failed update the interval doubles, up to this many seconds.
+MAX_BACKOFF = 300
 
 # How long a smoke or CO detection stays on without a "cleared" event.
 ALARM_TIMEOUT = timedelta(minutes=30)

@@ -191,6 +191,12 @@ def auto_enable_custom_integrations(enable_custom_integrations):
     return
 
 
+@pytest.fixture(autouse=True)
+def no_retry_delay(monkeypatch):
+    """Retry busy Netatmo answers without waiting in tests."""
+    monkeypatch.setattr("custom_components.netatmo_smarthome.api.RETRY_DELAY", 0)
+
+
 @pytest.fixture
 async def credentials(hass: HomeAssistant) -> None:
     """Register the user's Netatmo app credentials."""

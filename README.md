@@ -48,12 +48,17 @@ Pourquoi pas l'intégration officielle ?
 
 L'intervalle de mise à jour (60 s par défaut) se règle dans les options de l'intégration.
 
+Netatmo refuse souvent des requêtes quand ses serveurs sont chargés (erreur 503). L'intégration
+réessaie alors après 3 secondes, garde les dernières valeurs affichées et ralentit d'elle-même
+jusqu'à ce que Netatmo réponde de nouveau.
+
 **Une fois vos appareils vérifiés, désactivez l'intégration Netatmo officielle.** Les deux comptent
 dans la même limite de requêtes Netatmo et feraient doublon.
 
 ## Détecteurs de fumée et de CO : à savoir
 
-- L'alarme s'affiche au plus tard un cycle de mise à jour après l'événement (60 s par défaut).
+- L'alarme s'affiche au plus tard environ 2 minutes après l'événement (les événements sont lus un
+  cycle sur deux pour ménager l'API Netatmo).
 - Netatmo ne fournit **pas le niveau de batterie** des détecteurs. Le capteur « Dernier contact »
   montre leur dernier échange avec Netatmo (environ une fois par mois, lors du test automatique).
 - Elle s'éteint avec l'événement « fin d'alarme » de Netatmo, ou d'elle-même 30 minutes après une

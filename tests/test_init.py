@@ -18,7 +18,11 @@ from pytest_homeassistant_custom_component.common import (
 from pytest_homeassistant_custom_component.components.diagnostics import (
     get_diagnostics_for_config_entry,
 )
-from pytest_homeassistant_custom_component.test_util.aiohttp import AiohttpClientMocker
+from pytest_homeassistant_custom_component.test_util.aiohttp import (
+    AiohttpClientMocker,
+    AiohttpClientMockResponse,
+)
+from yarl import URL
 
 from custom_components.netatmo_smarthome.const import API_URL, DOMAIN, OAUTH2_TOKEN
 
@@ -354,3 +358,67 @@ async def test_transient_failures_keep_last_values(
     await coordinator.async_refresh()
     await hass.async_block_till_done()
     assert hass.states.get("cover.volet_salon").state == "unavailable"
+
+
+async def test_busy_netatmo_is_retried(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    credentials,
+    config_entry: MockConfigEntry,
+) -> None:
+    """A 503 "service temporarily unavailable" is retried once, unnoticed."""
+    mock_api(aioclient_mock)
+    answers = iter(
+        [
+            AiohttpClientMockResponse(
+                "GET",
+                URL(f"{API_URL}/homestatus"),
+                status=503,
+                json={
+                    "error": {"code": 27, "message": "Service temporarily unavailable"}
+                },
+            ),
+            AiohttpClientMockResponse(
+                "GET", URL(f"{API_URL}/homestatus"), json=homestatus()
+            ),
+        ]
+    )
+
+    async def _homestatus(method, url, data):
+        return next(answers)
+
+    aioclient_mock._mocks.insert(
+        0,
+        AiohttpClientMockResponse(
+            "GET", URL(f"{API_URL}/homestatus"), side_effect=_homestatus
+        ),
+    )
+    await _setup(hass, config_entry)
+
+    assert config_entry.state is ConfigEntryState.LOADED
+    assert hass.states.get("cover.volet_salon").state == "closed"
+
+
+async def test_failures_slow_polling_down(
+    hass: HomeAssistant,
+    aioclient_mock: AiohttpClientMocker,
+    credentials,
+    config_entry: MockConfigEntry,
+) -> None:
+    """Each failed update doubles the interval; a success restores it."""
+    mock_api(aioclient_mock)
+    await _setup(hass, config_entry)
+    coordinator = config_entry.runtime_data
+    assert coordinator.update_interval == timedelta(seconds=60)
+
+    aioclient_mock.clear_requests()
+    aioclient_mock.get(f"{API_URL}/homestatus", status=503, text="busy")
+    await coordinator.async_refresh()
+    assert coordinator.update_interval == timedelta(seconds=120)
+    await coordinator.async_refresh()
+    assert coordinator.update_interval == timedelta(seconds=240)
+
+    aioclient_mock.clear_requests()
+    mock_api(aioclient_mock)
+    await coordinator.async_refresh()
+    assert coordinator.update_interval == timedelta(seconds=60)

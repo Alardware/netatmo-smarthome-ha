@@ -24,8 +24,10 @@ from .const import (
     CO_TYPES,
     DEFAULT_SCAN_INTERVAL,
     DOMAIN,
+    EVENTS_EVERY,
     HOMECOACH_EVERY,
     LOGGER,
+    MAX_BACKOFF,
     MAX_TOKEN_FAILURES,
     SMOKE_TYPES,
     STALE_TOLERANCE,
@@ -153,6 +155,7 @@ class NetatmoCoordinator(DataUpdateCoordinator[NetatmoData]):
         self._token_failures = 0
         self._failures = 0
         self._homecoach_allowed = True
+        self._base_interval = timedelta(seconds=seconds)
         # Options the entry was loaded with: a new token must not reload it.
         self.loaded_options = dict(entry.options)
         self.raw: dict[str, Any] = {}
@@ -178,12 +181,19 @@ class NetatmoCoordinator(DataUpdateCoordinator[NetatmoData]):
             return self._keep_last_values(err)
         self._token_failures = 0
         self._failures = 0
+        self.update_interval = self._base_interval
         self._cycle += 1
         return data
 
     def _keep_last_values(self, err: NetatmoError) -> NetatmoData:
         """Keep the last values through a few failed updates in a row."""
         self._failures += 1
+        # Slow down while Netatmo refuses, so a busy server is not hammered.
+        self.update_interval = timedelta(
+            seconds=min(
+                self._base_interval.total_seconds() * 2**self._failures, MAX_BACKOFF
+            )
+        )
         if self.data is not None and self._failures < STALE_TOLERANCE:
             LOGGER.debug(
                 "Netatmo update failed (%s in a row), keeping the last values: %s",
@@ -246,8 +256,10 @@ class NetatmoCoordinator(DataUpdateCoordinator[NetatmoData]):
                     data.alarms[module_id] = previous.alarms.get(
                         module_id, NetatmoAlarm()
                     )
-                events = await self.client.async_get_events(home_id)
-                self.raw.setdefault("events", {})[home_id] = events[:10]
+                events: list[dict[str, Any]] = []
+                if self._cycle % EVENTS_EVERY == 0:
+                    events = await self.client.async_get_events(home_id)
+                    self.raw.setdefault("events", {})[home_id] = events[:10]
                 apply_events(data.alarms, events, self._seen_events, now)
                 if len(self._seen_events) > 2000:
                     self._seen_events = {str(e.get("id")) for e in events}

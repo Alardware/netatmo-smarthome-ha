@@ -6,6 +6,7 @@ saves every new (rotating) refresh token in the config entry right away.
 
 from __future__ import annotations
 
+import asyncio
 from typing import Any
 
 from aiohttp import ClientError, ClientResponseError, ClientTimeout
@@ -14,6 +15,8 @@ from homeassistant.helpers.config_entry_oauth2_flow import OAuth2Session
 from .const import API_URL
 
 REQUEST_TIMEOUT = ClientTimeout(total=20)
+# Netatmo often answers 503 to third-party apps under load: retry reads once.
+RETRY_DELAY = 3
 
 # Error codes found in the JSON body of a failed request.
 THROTTLE_CODES = {26, 28, 29}
@@ -57,6 +60,10 @@ class NetatmoApiError(NetatmoError):
     """Any other API error."""
 
 
+class NetatmoServerError(NetatmoApiError):
+    """Netatmo is overloaded or down (HTTP 5xx); usually gone seconds later."""
+
+
 class NetatmoCommandError(NetatmoError):
     """setstate answered with per-module errors."""
 
@@ -86,6 +93,22 @@ class NetatmoClient:
         endpoint: str,
         params: dict[str, Any] | None = None,
         json: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        """Run a request; retry a read once when Netatmo is busy or unreachable."""
+        try:
+            return await self._request_once(method, endpoint, params, json)
+        except (NetatmoConnectionError, NetatmoServerError):
+            if method != "GET":
+                raise  # never repeat a command that may already have run
+        await asyncio.sleep(RETRY_DELAY)
+        return await self._request_once(method, endpoint, params, json)
+
+    async def _request_once(
+        self,
+        method: str,
+        endpoint: str,
+        params: dict[str, Any] | None,
+        json: dict[str, Any] | None,
     ) -> dict[str, Any]:
         """Run a request and return the decoded body."""
         try:
@@ -127,7 +150,10 @@ class NetatmoClient:
             raise NetatmoScopeError(message or "Missing permission")
         if status == 401 or code in TOKEN_CODES:
             raise NetatmoAuthError(message or "Invalid access token", status)
-        raise NetatmoApiError(f"HTTP {status} code {code}: {message}".strip())
+        error = f"HTTP {status} code {code}: {message}".strip()
+        if status >= 500:
+            raise NetatmoServerError(error)
+        raise NetatmoApiError(error)
 
     async def async_get_homes(self) -> list[dict[str, Any]]:
         """Return the homes, rooms and modules of the account."""
